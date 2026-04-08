@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { VenueService, Venue } from '../../services/venue.service';
 import { AuthService } from '../../services/auth.service';
+import { BookingService } from '../../services/booking.service';
 
 const SPORT_ICONS: Record<string, string> = {
   Cricket: '🏏', Football: '⚽', Basketball: '🏀',
@@ -34,6 +35,11 @@ const SPORT_ICONS: Record<string, string> = {
             <input type="text" [(ngModel)]="searchTerm" placeholder="Search venues…"
               class="search-input" (ngModelChange)="applyFilters()">
           </div>
+          <input type="date" [(ngModel)]="selectedDate" class="form-control filter-select" (ngModelChange)="onAvailabilityFilterChange()">
+          <select [(ngModel)]="selectedTimeSlot" class="form-control filter-select" (ngModelChange)="onAvailabilityFilterChange()">
+            <option value="">Any Slot</option>
+            <option *ngFor="let slot of timeSlots" [value]="slot">{{ slot }}</option>
+          </select>
           <select [(ngModel)]="selectedSport" class="form-control filter-select" (ngModelChange)="applyFilters()">
             <option value="">All Sports</option>
             <option *ngFor="let s of sports" [value]="s">{{ s }}</option>
@@ -80,6 +86,10 @@ const SPORT_ICONS: Record<string, string> = {
               <span class="venue-meta-item">👥 Capacity: {{ venue.capacity }}</span>
             </div>
             <p class="venue-desc">{{ venue.description }}</p>
+            <div class="availability-chip" *ngIf="availabilityMap[venue.id || 0] as a">
+              <span [class.full]="a.remainingSeats===0">{{ a.remainingSeats }} / {{ a.totalCapacity }} seats left</span>
+              <small>for {{ selectedDate }} {{ selectedTimeSlot }}</small>
+            </div>
           </div>
           <div class="venue-footer">
             <div class="venue-price">
@@ -179,6 +189,21 @@ const SPORT_ICONS: Record<string, string> = {
     .venue-meta { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
     .venue-meta-item { font-size: 0.83rem; color: var(--text-secondary); }
     .venue-desc { font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; }
+    .availability-chip {
+      margin-top: 10px;
+      display: inline-flex;
+      flex-direction: column;
+      gap: 2px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 6px 10px;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+    }
+    .availability-chip span { color: var(--primary); font-weight: 700; }
+    .availability-chip span.full { color: var(--error); }
+    .availability-chip small { color: var(--text-muted); }
 
     .venue-footer {
       padding: 12px 20px 16px; border-top: 1px solid var(--border-light);
@@ -209,10 +234,19 @@ export class VenuesComponent implements OnInit {
   searchTerm = '';
   selectedSport = '';
   sortBy = '';
+  selectedDate = '';
+  selectedTimeSlot = '';
   isLoggedIn = false;
   isAdmin = false;
+  availabilityMap: Record<number, { remainingSeats: number; totalCapacity: number }> = {};
 
   sports = ['Cricket', 'Football', 'Basketball', 'Tennis', 'Badminton', 'Swimming', 'Volleyball', 'Hockey'];
+  timeSlots = [
+    '06:00-07:00','07:00-08:00','08:00-09:00','09:00-10:00',
+    '10:00-11:00','11:00-12:00','12:00-13:00','13:00-14:00',
+    '14:00-15:00','15:00-16:00','16:00-17:00','17:00-18:00',
+    '18:00-19:00','19:00-20:00','20:00-21:00','21:00-22:00'
+  ];
 
   get topSports() {
     const counts: Record<string, number> = {};
@@ -220,7 +254,7 @@ export class VenuesComponent implements OnInit {
     return Object.entries(counts).map(([sport, count]) => ({ sport, count })).slice(0, 4);
   }
 
-  constructor(private venueService: VenueService, private authService: AuthService) {}
+  constructor(private venueService: VenueService, private authService: AuthService, private bookingService: BookingService) {}
 
   ngOnInit() {
     this.isLoggedIn = this.authService.isLoggedIn();
@@ -242,6 +276,34 @@ export class VenuesComponent implements OnInit {
     else if (this.sortBy === 'price-desc') list.sort((a, b) => b.pricePerHour - a.pricePerHour);
     else if (this.sortBy === 'name') list.sort((a, b) => a.name.localeCompare(b.name));
     this.filteredVenues = list;
+    this.updateAvailabilityPreview();
+  }
+
+  onAvailabilityFilterChange() {
+    this.updateAvailabilityPreview();
+  }
+
+  updateAvailabilityPreview() {
+    this.availabilityMap = {};
+    if (!this.selectedDate || !this.selectedTimeSlot) return;
+
+    for (const venue of this.filteredVenues) {
+      if (!venue.id) continue;
+      this.bookingService.getByVenue(venue.id).subscribe({
+        next: (bookings) => {
+          const target = `${this.selectedDate}_${this.selectedTimeSlot}`;
+          const bookedCount = bookings.filter(b => b.status === 'CONFIRMED' && b.timeSlot === target).length;
+          const totalCapacity = venue.capacity;
+          this.availabilityMap[venue.id!] = {
+            totalCapacity,
+            remainingSeats: Math.max(totalCapacity - bookedCount, 0)
+          };
+        },
+        error: () => {
+          this.availabilityMap[venue.id!] = { totalCapacity: venue.capacity, remainingSeats: venue.capacity };
+        }
+      });
+    }
   }
 
   getSportIcon(sport: string): string { return SPORT_ICONS[sport] || SPORT_ICONS['Default']; }

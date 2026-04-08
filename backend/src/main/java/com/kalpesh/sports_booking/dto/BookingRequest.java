@@ -16,6 +16,8 @@ public class BookingRequest {
     @NotNull(message = "Booking date is required")
     private LocalDate bookingDate;
 
+    private String groundName;
+
     public Long getVenueId() { return venueId; }
     public void setVenueId(Long venueId) { this.venueId = venueId; }
 
@@ -24,4 +26,7 @@ public class BookingRequest {
 
     public LocalDate getBookingDate() { return bookingDate; }
     public void setBookingDate(LocalDate bookingDate) { this.bookingDate = bookingDate; }
+
+    public String getGroundName() { return groundName; }
+    public void setGroundName(String groundName) { this.groundName = groundName; }
 }

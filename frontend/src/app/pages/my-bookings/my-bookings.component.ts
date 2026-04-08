@@ -56,6 +56,7 @@ import { AuthService } from '../../services/auth.service';
                 <span>📍 {{ booking.venue.location }}</span>
                 <span>🗓️ {{ formatDate(booking.timeSlot) }}</span>
                 <span>⏰ {{ formatTime(booking.timeSlot) }}</span>
+                <span *ngIf="booking.groundName">🏷️ {{ booking.groundName }}</span>
               </div>
             </div>
           </div>

@@ -7,11 +7,13 @@ import com.kalpesh.sports_booking.model.Venue;
 import com.kalpesh.sports_booking.repository.BookingRepository;
 import com.kalpesh.sports_booking.repository.UserRepository;
 import com.kalpesh.sports_booking.repository.VenueRepository;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class BookingService {
@@ -53,10 +55,36 @@ public class BookingService {
             throw new RuntimeException("This time slot is fully booked for the selected date. Capacity limit reached.");
         }
 
+        List<Booking> slotBookings = bookingRepository.findByVenueAndTimeSlot(venue, slotKey).stream()
+                .filter(b -> "CONFIRMED".equals(b.getStatus()))
+                .toList();
+        List<String> grounds = generateGroundNames(venue.getCapacity());
+        Set<String> usedGrounds = new HashSet<>();
+        slotBookings.stream()
+                .map(Booking::getGroundName)
+                .filter(name -> name != null && !name.isBlank())
+                .forEach(usedGrounds::add);
+
+        String selectedGround = request.getGroundName();
+        if (selectedGround == null || selectedGround.isBlank()) {
+            selectedGround = grounds.stream()
+                    .filter(g -> !usedGrounds.contains(g))
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("No ground is available for this time slot."));
+        } else {
+            if (!grounds.contains(selectedGround)) {
+                throw new RuntimeException("Invalid ground selection.");
+            }
+            if (usedGrounds.contains(selectedGround)) {
+                throw new RuntimeException("Selected ground is already booked. Please choose another one.");
+            }
+        }
+
         Booking booking = new Booking();
         booking.setVenue(venue);
         booking.setUser(currentUser);
         booking.setTimeSlot(slotKey);
+        booking.setGroundName(selectedGround);
         booking.setBookingDate(request.getBookingDate().atStartOfDay());
         booking.setStatus("CONFIRMED");
 
@@ -96,5 +124,18 @@ public class BookingService {
         booking.setStatus("CANCELLED");
         bookingRepository.save(booking);
         return "Booking cancelled successfully";
+    }
+
+    private List<String> generateGroundNames(int capacity) {
+        List<String> preferred = List.of(
+                "North Zone", "South Zone", "East Zone", "West Zone",
+                "Center Court", "Arena A", "Arena B", "Arena C",
+                "Court 1", "Court 2", "Court 3", "Court 4"
+        );
+        List<String> grounds = new ArrayList<>();
+        for (int i = 0; i < capacity; i++) {
+            grounds.add(i < preferred.size() ? preferred.get(i) : "Ground " + (i + 1));
+        }
+        return grounds;
     }
 }

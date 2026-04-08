@@ -98,7 +98,7 @@ import { BookingService, Booking } from '../../services/booking.service';
         <div class="admin-table-wrap" *ngIf="!bookingLoading">
           <table class="admin-table">
             <thead>
-              <tr><th>#</th><th>User</th><th>Venue</th><th>Date & Slot</th><th>Status</th><th>Action</th></tr>
+              <tr><th>#</th><th>User</th><th>Venue</th><th>Date & Slot</th><th>Ground</th><th>Status</th><th>Action</th></tr>
             </thead>
             <tbody>
               <tr *ngFor="let b of bookings" class="table-row">
@@ -111,6 +111,7 @@ import { BookingService, Booking } from '../../services/booking.service';
                 </td>
                 <td>{{ b.venue.name }}</td>
                 <td class="text-muted" style="font-size:0.82rem">{{ formatSlot(b.timeSlot) }}</td>
+                <td><span class="badge badge-info">{{ b.groundName || 'Auto' }}</span></td>
                 <td>
                   <span class="badge" [class.badge-success]="b.status==='CONFIRMED'" [class.badge-error]="b.status==='CANCELLED'">
                     {{ b.status }}

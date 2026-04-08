@@ -61,14 +61,28 @@ const SPORT_ICONS: Record<string, string> = {
 
             <div class="form-group">
               <label class="form-label">Select Time Slot</label>
-              <select formControlName="timeSlot" class="form-control" [disabled]="!availableSlots.length">
+              <select formControlName="timeSlot" class="form-control" [disabled]="!availableSlots.length" (change)="onTimeSlotChange()">
                 <option value="">{{ bookingForm.value.bookingDate ? 'Pick a slot' : 'Select date first' }}</option>
                 <option *ngFor="let slot of availableSlots" [value]="slot.value" [disabled]="slot.booked">
-                  {{ slot.label }} {{ slot.booked ? '(Booked)' : '' }}
+                  {{ slot.label }} {{ slot.booked ? '(Full)' : '(' + slot.remainingSeats + ' / ' + slot.totalCapacity + ' seats left)' }}
                 </option>
               </select>
               <span *ngIf="bf['timeSlot'].touched && bf['timeSlot'].errors?.['required']" class="form-error">Time slot is required</span>
             </div>
+          </div>
+
+          <div class="form-group" *ngIf="bookingForm.value.timeSlot">
+            <label class="form-label">Select Ground</label>
+            <select formControlName="groundName" class="form-control" [disabled]="!availableGrounds.length">
+              <option value="">{{ availableGrounds.length ? 'Choose ground/zone' : 'No ground available' }}</option>
+              <option *ngFor="let g of availableGrounds" [value]="g">{{ g }}</option>
+            </select>
+            <span *ngIf="bf['groundName'].touched && bf['groundName'].errors?.['required']" class="form-error">Ground selection is required</span>
+          </div>
+
+          <div class="capacity-preview" *ngIf="selectedSlotInfo">
+            <span class="capacity-label">Availability for selected slot</span>
+            <span class="capacity-value">{{ selectedSlotInfo.remainingSeats }} / {{ selectedSlotInfo.totalCapacity }} seats left</span>
           </div>
 
           <!-- Price Estimate -->
@@ -89,7 +103,7 @@ const SPORT_ICONS: Record<string, string> = {
         <h3 class="booked-title">📋 Bookings for this Slot</h3>
         <div class="booked-list">
           <div *ngFor="let b of getSelectedSlotBookings()" class="booked-item">
-            <span class="booked-date">{{ formatSlot(b.timeSlot) }}</span>
+              <span class="booked-date">{{ formatSlot(b.timeSlot) }} • {{ b.groundName || 'Assigned Ground' }}</span>
             <span class="badge badge-error">Taken</span>
           </div>
         </div>
@@ -160,6 +174,13 @@ const SPORT_ICONS: Record<string, string> = {
     }
     .price-label { font-size: 0.9rem; color: var(--text-secondary); }
     .price-val { font-size: 1.2rem; font-weight: 800; color: var(--primary); }
+    .capacity-preview {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px;
+    }
+    .capacity-label { font-size: 0.9rem; color: var(--text-secondary); }
+    .capacity-value { font-size: 1rem; font-weight: 700; color: var(--primary); }
 
     .btn-spinner {
       width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.3);
@@ -186,7 +207,8 @@ export class VenueDetailComponent implements OnInit {
   bookingSuccess = false;
   bookingError = '';
   existingBookings: any[] = [];
-  availableSlots: { value: string; label: string; booked: boolean }[] = [];
+  availableSlots: { value: string; label: string; booked: boolean; remainingSeats: number; totalCapacity: number }[] = [];
+  availableGrounds: string[] = [];
   bookingForm: FormGroup;
   minDate = new Date().toISOString().split('T')[0];
 
@@ -206,11 +228,17 @@ export class VenueDetailComponent implements OnInit {
   ) {
     this.bookingForm = this.fb.group({
       bookingDate: ['', Validators.required],
-      timeSlot: ['', Validators.required]
+      timeSlot: ['', Validators.required],
+      groundName: ['', Validators.required]
     });
   }
 
   get bf() { return this.bookingForm.controls; }
+  get selectedSlotInfo() {
+    const selected = this.bookingForm.value.timeSlot;
+    if (!selected) return null;
+    return this.availableSlots.find(s => s.value === selected) || null;
+  }
 
   ngOnInit() {
     const id = +this.route.snapshot.paramMap.get('id')!;
@@ -238,14 +266,41 @@ export class VenueDetailComponent implements OnInit {
 
     this.availableSlots = this.TIME_SLOTS.map(slot => {
       const occurrences = bookedSlots.filter(s => s === slot).length;
-      const isBooked = occurrences >= (this.venue?.capacity || 1);
+      const totalCapacity = this.venue?.capacity || 1;
+      const remainingSeats = Math.max(totalCapacity - occurrences, 0);
+      const isBooked = remainingSeats <= 0;
       return {
         value: slot,
         label: slot,
-        booked: isBooked
+        booked: isBooked,
+        remainingSeats,
+        totalCapacity
       };
     });
-    this.bookingForm.patchValue({ timeSlot: '' });
+    this.availableGrounds = [];
+    this.bookingForm.patchValue({ timeSlot: '', groundName: '' });
+  }
+
+  onTimeSlotChange() {
+    const selectedSlot = this.bookingForm.value.timeSlot;
+    const bookingDate = this.bookingForm.value.bookingDate;
+    if (!selectedSlot || !bookingDate || !this.venue) {
+      this.availableGrounds = [];
+      this.bookingForm.patchValue({ groundName: '' });
+      return;
+    }
+
+    const targetKey = `${bookingDate}_${selectedSlot}`;
+    const occupied = new Set(
+      this.existingBookings
+        .filter(b => b.timeSlot === targetKey && b.status === 'CONFIRMED')
+        .map(b => b.groundName)
+        .filter((g: string | undefined) => !!g)
+    );
+
+    const allGrounds = this.generateGroundNames(this.venue.capacity);
+    this.availableGrounds = allGrounds.filter(g => !occupied.has(g));
+    this.bookingForm.patchValue({ groundName: '' });
   }
 
   book() {
@@ -253,13 +308,14 @@ export class VenueDetailComponent implements OnInit {
     this.bookingLoading = true;
     this.bookingError = '';
 
-    const { bookingDate, timeSlot } = this.bookingForm.value;
-    this.bookingService.book({ venueId: this.venue.id, bookingDate, timeSlot }).subscribe({
+    const { bookingDate, timeSlot, groundName } = this.bookingForm.value;
+    this.bookingService.book({ venueId: this.venue.id, bookingDate, timeSlot, groundName }).subscribe({
       next: () => {
         this.bookingSuccess = true;
         this.bookingLoading = false;
         this.bookingForm.reset();
         this.availableSlots = [];
+        this.availableGrounds = [];
         this.loadBookings(this.venue!.id!);
       },
       error: (err) => {
@@ -307,5 +363,14 @@ export class VenueDetailComponent implements OnInit {
   formatSlot(slot: string): string {
     const parts = slot.split('_');
     return parts.length === 2 ? `${parts[0]} | ${parts[1]}` : slot;
+  }
+
+  private generateGroundNames(capacity: number): string[] {
+    const preferred = [
+      'North Zone', 'South Zone', 'East Zone', 'West Zone',
+      'Center Court', 'Arena A', 'Arena B', 'Arena C',
+      'Court 1', 'Court 2', 'Court 3', 'Court 4'
+    ];
+    return Array.from({ length: capacity }, (_, i) => preferred[i] || `Ground ${i + 1}`);
   }
 }

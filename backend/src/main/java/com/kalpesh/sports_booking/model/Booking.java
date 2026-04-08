@@ -31,6 +31,9 @@ public class Booking {
     @Column(nullable = false)
     private String status = "CONFIRMED"; // CONFIRMED, CANCELLED
 
+    @Column
+    private String groundName;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
@@ -69,6 +72,9 @@ public class Booking {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public String getGroundName() { return groundName; }
+    public void setGroundName(String groundName) { this.groundName = groundName; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

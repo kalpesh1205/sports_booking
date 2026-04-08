@@ -7,6 +7,7 @@ export interface BookingRequest {
   venueId: number;
   timeSlot: string;
   bookingDate: string; // ISO date string YYYY-MM-DD
+  groundName?: string;
 }
 
 export interface Booking {
@@ -14,6 +15,7 @@ export interface Booking {
   venue: { id: number; name: string; location: string; sportType: string; pricePerHour: number; };
   user: { id: number; username: string; role: string; email?: string; };
   timeSlot: string;
+  groundName?: string;
   bookingDate: string;
   status: string;
   createdAt: string;
